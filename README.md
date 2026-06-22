@@ -25,4 +25,4 @@ If BCL cannot start or stop charging correctly, enable **Always Write CTRL File*
 
 ## License
 
-GNU General Public License v3.0
+GNU General Public License v3.0 
