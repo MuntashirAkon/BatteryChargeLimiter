@@ -10,6 +10,7 @@ import com.topjohnwu.superuser.Shell
 import io.github.muntashirakon.bcl.Constants
 import io.github.muntashirakon.bcl.R
 import io.github.muntashirakon.bcl.Utils
+import io.github.muntashirakon.bcl.settings.PrefsFragment
 
 class ControlBatteryChargeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
@@ -17,6 +18,10 @@ class ControlBatteryChargeReceiver : BroadcastReceiver() {
         if (Constants.INTENT_CHANGE_LIMIT_ACTION == intent.action) {
             Utils.handleLimitChange(context, intent.extras?.get(Intent.EXTRA_TEXT))
         } else if (intent.action == Constants.INTENT_DISABLE_ACTION) {
+            // "Dismiss" / "Disable temporarily": remember it so the watchdog does
+            // not resurrect the service while the device stays plugged in.
+            Utils.getPrefs(context).edit()
+                .putBoolean(PrefsFragment.KEY_SERVICE_DISMISSED, true).apply()
             Utils.stopService(context, false)
         } else if (intent.action == Constants.INTENT_TOGGLE_ACTION) {
             val settings = Utils.getSettings(context)

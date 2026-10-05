@@ -2,14 +2,23 @@ package io.github.muntashirakon.bcl
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.job.JobInfo
+import android.app.job.JobScheduler
+import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.net.Uri
 import android.os.BatteryManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
+import android.os.UserManager
+import android.provider.Settings
 import android.util.Log
 import android.view.View
 import android.widget.Toast
@@ -85,25 +94,49 @@ object Utils {
             getCtrlDisabledData(context)
         }
 
-        val switchCommands: Array<String>
-        if (cfInitialized) {
-            switchCommands = arrayOf("echo \"$newState\" > $file")
-        } else {
-            cfInitialized = true
-            switchCommands = arrayOf(
-                "mount -o rw,remount $file", "chmod u+w $file",
-                "echo \"$newState\" > $file"
-            )
-        }
-
         if (alwaysWrite) {
-            Shell.cmd(switchCommands.joinToString(separator = " && ")).submit()
+            writeCtrlFile(file, newState)
         } else {
             Shell.cmd("cat $file").submit {
                 if (it.out.size == 0 || it.out[0] != newState) {
                     setChangePending()
-                    Shell.cmd(switchCommands.joinToString(separator = " && ")).submit()
+                    writeCtrlFile(file, newState)
                 }
+            }
+        }
+    }
+
+    /**
+     * Writes [newState] to the control [file] and verifies the result.
+     *
+     * The preparation commands must not be joined with `&&`: on many kernels
+     * (observed on a Samsung MediaTek device) `mount -o rw,remount <file>`
+     * fails because a sysfs path is not a mount point. With `&&` that failure
+     * skipped the `echo` as well, silently dropping the first write of every
+     * process - the app reported "maintaining" while the file kept its old
+     * value and the device kept charging past the limit.
+     *
+     * Failures and ignored writes are logged instead of being swallowed.
+     */
+    internal fun writeCtrlFile(file: String, newState: String) {
+        val write = "echo \"$newState\" > $file && cat $file"
+        val command = if (cfInitialized) {
+            write
+        } else {
+            "mount -o rw,remount $file 2>/dev/null; chmod u+w $file 2>/dev/null; $write"
+        }
+        Shell.cmd(command).submit { result ->
+            val written = result.out.lastOrNull()?.trim()
+            when {
+                !result.isSuccess -> Log.e(
+                    TAG, "Failed to write '$newState' to $file: " +
+                        result.err.joinToString(separator = " ")
+                )
+                written != newState -> {
+                    cfInitialized = true
+                    Log.e(TAG, "Wrote '$newState' to $file but it reads back '$written'")
+                }
+                else -> cfInitialized = true
             }
         }
     }
@@ -156,6 +189,46 @@ object Utils {
         return (batteryIntent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
                 == BatteryManager.BATTERY_STATUS_CHARGING
                 || batteryIntent.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) > 0)
+    }
+
+    /**
+     * Returns whether the system is allowed to skip battery optimizations (Doze,
+     * background restrictions) for the app.
+     *
+     * Without the exemption the system may kill the foreground service in the
+     * background, and the charge limit stops being applied until the app runs
+     * again. The check answers `true` on devices without battery optimization.
+     */
+    fun isIgnoringBatteryOptimizations(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return true
+        }
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        return powerManager.isIgnoringBatteryOptimizations(context.packageName)
+    }
+
+    /**
+     * Opens the system dialog that asks the user to exempt the app from battery
+     * optimizations. Some ROMs do not implement the direct request, so the
+     * battery optimization settings screen is used as a fallback.
+     */
+    fun requestBatteryOptimizationExemption(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return
+        }
+        try {
+            context.startActivity(
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                    .setData(Uri.parse("package:${context.packageName}"))
+            )
+        } catch (e: ActivityNotFoundException) {
+            Log.w(TAG, "Direct battery optimization request not available", e)
+            try {
+                context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+            } catch (e2: ActivityNotFoundException) {
+                Log.w(TAG, "Battery optimization settings not available", e2)
+            }
+        }
     }
 
     fun getBatteryLevel(batteryIntent: Intent): Int {
@@ -248,9 +321,13 @@ object Utils {
     }
 
     fun startServiceIfLimitEnabled(context: Context) {
+        syncDirectBootSettings(context)
         if (!getSettings(context).getBoolean(CHARGE_LIMIT_ENABLED, false)) {
             return
         }
+        // An explicit start request re-arms the limit after a temporary dismissal.
+        getPrefs(context).edit().putBoolean(PrefsFragment.KEY_SERVICE_DISMISSED, false).apply()
+        ensureServiceWatchdog(context)
         if (getPrefs(context).getBoolean(PrefsFragment.KEY_DISABLE_AUTO_RECHARGE, false)) {
             changeState(context, CHARGE_ON)
         }
@@ -272,6 +349,11 @@ object Utils {
     }
 
     fun stopService(context: Context, ignoreAutoReset: Boolean = true) {
+        // Keep the device-protected mirror in sync while the settings are readable.
+        syncDirectBootSettings(context)
+        if (!getSettings(context).getBoolean(CHARGE_LIMIT_ENABLED, false)) {
+            cancelServiceWatchdog(context)
+        }
         val wasServiceRunning = ForegroundService.isRunning
         if (ignoreAutoReset) {
             ForegroundService.ignoreAutoReset()
@@ -284,6 +366,101 @@ object Utils {
         if (wasServiceRunning && !getPrefs(context).getBoolean("hide_toast_on_service_changes", false)) {
             Toast.makeText(context, R.string.service_disabled, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /**
+     * Persisted periodic watchdog that recovers the service after the process is
+     * killed in the background. The one-shot plug-in job cannot cover this: it is
+     * consumed when charging starts, so a kill afterwards would leave the limit
+     * unenforced until the next plug-in. The watchdog runs about every 15 minutes,
+     * restarts the service when it should be running and clears the temporary
+     * "dismissed" state once the charger is gone.
+     */
+    fun ensureServiceWatchdog(context: Context) {
+        val jobScheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
+            && jobScheduler.getPendingJob(Constants.JOB_SERVICE_WATCHDOG_ID) != null
+        ) {
+            return
+        }
+        val jobInfo = JobInfo.Builder(
+            Constants.JOB_SERVICE_WATCHDOG_ID,
+            ComponentName(context, ChargeStartJobService::class.java)
+        )
+            .setPeriodic(15 * 60 * 1000L)
+            .setPersisted(true)
+            .build()
+        jobScheduler.schedule(jobInfo)
+    }
+
+    private fun cancelServiceWatchdog(context: Context) {
+        val jobScheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
+        jobScheduler.cancel(Constants.JOB_SERVICE_WATCHDOG_ID)
+    }
+
+    /**
+     * Returns the device-protected preferences used during direct boot, i.e.
+     * before the user unlocks the device and the regular settings are readable.
+     */
+    fun getDirectBootPrefs(context: Context): SharedPreferences {
+        return context.createDeviceProtectedStorageContext()
+            .getSharedPreferences(Constants.DIRECT_BOOT_PREFS, Context.MODE_PRIVATE)
+    }
+
+    fun isUserUnlocked(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            return true
+        }
+        val userManager = context.getSystemService(Context.USER_SERVICE) as UserManager
+        return userManager.isUserUnlocked
+    }
+
+    /**
+     * Mirrors the enforcement settings into device-protected storage so the
+     * pre-unlock service can apply the limit after a reboot, before the user
+     * unlocks the device and the credential-encrypted settings are readable.
+     */
+    fun syncDirectBootSettings(context: Context) {
+        if (!isUserUnlocked(context)) {
+            return
+        }
+        val settings = getSettings(context)
+        val limit = settings.getInt(LIMIT, Constants.DEFAULT_LIMIT_PC)
+        getDirectBootPrefs(context).edit()
+            .putBoolean(CHARGE_LIMIT_ENABLED, settings.getBoolean(CHARGE_LIMIT_ENABLED, false))
+            .putString(FILE_KEY, getCtrlFileData(context))
+            .putString(CHARGE_ON_KEY, getCtrlEnabledData(context))
+            .putString(CHARGE_OFF_KEY, getCtrlDisabledData(context))
+            .putInt(LIMIT, limit)
+            .putInt(MIN, settings.getInt(MIN, limit - 2))
+            .apply()
+    }
+
+    /**
+     * Schedules the persisted job that starts the service when charging begins.
+     *
+     * Manifest power broadcasts can be dropped for apps that are not running
+     * (observed on Android 13 GSIs), so a normal unplug/replug silently left
+     * the limit off. The system runs this job when the charging constraint is
+     * met, whether or not the app is alive. Called whenever the service stops
+     * and at boot; the job has a fixed id, so scheduling again just replaces it.
+     */
+    fun scheduleChargeStartJob(context: Context) {
+        if (!getSettings(context).getBoolean(CHARGE_LIMIT_ENABLED, false)) {
+            return
+        }
+        if (getPrefs(context).getBoolean(PrefsFragment.KEY_DISABLE_AUTO_RECHARGE, false)) {
+            return
+        }
+        val jobScheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
+        val jobInfo = JobInfo.Builder(
+            Constants.JOB_CHARGE_START_ID,
+            ComponentName(context, ChargeStartJobService::class.java)
+        )
+            .setRequiresCharging(true)
+            .setPersisted(true)
+            .build()
+        jobScheduler.schedule(jobInfo)
     }
 
     fun getCtrlFileData(context: Context): String {

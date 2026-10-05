@@ -1,0 +1,1 @@
+- Added a popup that asks to disable battery optimization when the app opens, so Android is less likely to kill the charge limit in the background; it can be dismissed for now or permanently with "Don't ask again"

@@ -1,0 +1,3 @@
+- Rebuilt the main screen with a Material 3 design: battery status card, grouped sections, and value sliders instead of number pickers
+- New battery monitor: maximum capacity, cycle count, battery temperature, time to full, battery power in watts and the connected charger, plus a live power chart
+- Charge limit, recharge threshold and discharge target are now sliders, and the recharge threshold follows the limit

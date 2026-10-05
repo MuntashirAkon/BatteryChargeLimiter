@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.preference.PreferenceManager
+import io.github.muntashirakon.bcl.Constants
 import io.github.muntashirakon.bcl.Constants.CHARGING_CHANGE_TOLERANCE_MS
 import io.github.muntashirakon.bcl.Constants.LIMIT
 import io.github.muntashirakon.bcl.Constants.MAX_BACK_OFF_TIME
@@ -36,6 +37,12 @@ class BatteryReceiver(private val service: ForegroundService) : BroadcastReceive
     private var preferenceChangeListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
     private val settings = service.getSharedPreferences(SETTINGS, 0)
     private var useNotificationSound = prefs.getBoolean(PrefsFragment.KEY_NOTIFICATION_SOUND, false)
+    private var heatProtectionEnabled = prefs.getBoolean(PrefsFragment.KEY_HEAT_PROTECTION, false)
+    private var heatProtectionMaxTemp =
+        prefs.getInt(PrefsFragment.KEY_HEAT_PROTECTION_MAX_TEMP, Constants.DEFAULT_HEAT_MAX_TEMP_C)
+    private var heatPaused = false
+    private var dischargeActive = false
+    private var dischargeTarget = Constants.MIN_DISCHARGE_TARGET_PC
 
     init {
         preferenceChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, key ->
@@ -51,11 +58,21 @@ class BatteryReceiver(private val service: ForegroundService) : BroadcastReceive
                     )
                     service.updateNotification()
                 }
-                LIMIT, MIN -> {
+                LIMIT, MIN, Constants.DISCHARGE_ACTIVE, Constants.DISCHARGE_TARGET -> {
                     reset(sharedPreferences)
                 }
                 PrefsFragment.KEY_NOTIFICATION_SOUND -> {
                     this.useNotificationSound = prefs.getBoolean(PrefsFragment.KEY_NOTIFICATION_SOUND, false)
+                }
+                PrefsFragment.KEY_HEAT_PROTECTION -> {
+                    heatProtectionEnabled = sharedPreferences
+                        .getBoolean(PrefsFragment.KEY_HEAT_PROTECTION, false)
+                    reEvaluate()
+                }
+                PrefsFragment.KEY_HEAT_PROTECTION_MAX_TEMP -> {
+                    heatProtectionMaxTemp = sharedPreferences
+                        .getInt(PrefsFragment.KEY_HEAT_PROTECTION_MAX_TEMP, Constants.DEFAULT_HEAT_MAX_TEMP_C)
+                    reEvaluate()
                 }
             }
         }
@@ -71,7 +88,14 @@ class BatteryReceiver(private val service: ForegroundService) : BroadcastReceive
         backOffTime = CHARGING_CHANGE_TOLERANCE_MS
         limitPercentage = settings.getInt(LIMIT, 80)
         rechargePercentage = settings.getInt(MIN, limitPercentage - 2)
+        dischargeActive = settings.getBoolean(Constants.DISCHARGE_ACTIVE, false)
+        dischargeTarget = settings.getInt(Constants.DISCHARGE_TARGET, Constants.MIN_DISCHARGE_TARGET_PC)
         // manually fire onReceive() to update state if service is enabled
+        reEvaluate()
+    }
+
+    /** Re-applies the state machine to the current battery state. */
+    private fun reEvaluate() {
         onReceive(service, service.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))!!)
     }
 
@@ -98,6 +122,7 @@ class BatteryReceiver(private val service: ForegroundService) : BroadcastReceive
             // continue only if the state didn't change in the meantime
             if (triggerState == lastState && !Utils.isPhonePluggedIn(service)) {
                 Utils.stopService(service, false)
+                Utils.scheduleChargeStartJob(service)
             }
         }, POWER_CHANGE_TOLERANCE_MS)
     }
@@ -110,6 +135,7 @@ class BatteryReceiver(private val service: ForegroundService) : BroadcastReceive
 
         val batteryLevel = Utils.getBatteryLevel(intent)
         val currentStatus = intent.getIntExtra(BatteryManager.EXTRA_STATUS, BatteryManager.BATTERY_STATUS_UNKNOWN)
+        val batteryTemperature = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1)
 
         val preferences = PreferenceManager.getDefaultSharedPreferences(context)
         val showTempInNotif = preferences.getBoolean("temp_in_notif", false)
@@ -119,6 +145,54 @@ class BatteryReceiver(private val service: ForegroundService) : BroadcastReceive
         } else {
             service.setNotificationContentText(Utils.getBatteryInfo(service, intent, useFahrenheit))
         }
+
+        // A discharge session keeps the charger input off until the target level is
+        // reached, then hands over to the normal limit logic.
+        if (dischargeActive) {
+            if (batteryLevel > dischargeTarget) {
+                if (switchState(CHARGE_DISCHARGE)) {
+                    Log.d("Charging State", "CHARGE_DISCHARGE " + this.hashCode())
+                    Utils.changeState(service, Utils.CHARGE_OFF)
+                    service.setNotificationTitle(service.getString(R.string.discharging_to_x, dischargeTarget))
+                    service.setNotificationIcon(NOTIF_MAINTAIN)
+                    service.setNotificationActionText(service.getString(R.string.dismiss))
+                }
+                service.updateNotification()
+                service.removeNotificationSound()
+                return
+            }
+            // Target reached: end the session and continue with the normal logic.
+            dischargeActive = false
+            chargedToLimit = false
+            lastState = -1
+            settings.edit().putBoolean(Constants.DISCHARGE_ACTIVE, false).apply()
+        }
+
+        // Heat protection pauses charging while the battery is hotter than the
+        // maximum, with a hysteresis so it does not toggle at the threshold.
+        if (heatProtectionEnabled && batteryTemperature > 0) {
+            val temperatureC = batteryTemperature / 10
+            when {
+                temperatureC >= heatProtectionMaxTemp -> heatPaused = true
+                temperatureC <= heatProtectionMaxTemp - Constants.HEAT_HYSTERESIS_C -> heatPaused = false
+                // In between: keep the previous decision.
+            }
+        } else {
+            heatPaused = false
+        }
+        if (heatPaused) {
+            if (switchState(CHARGE_HEAT)) {
+                Log.d("Charging State", "CHARGE_HEAT " + this.hashCode())
+                Utils.changeState(service, Utils.CHARGE_OFF)
+                service.setNotificationTitle(service.getString(R.string.cooling_down_at_x, batteryTemperature / 10))
+                service.setNotificationIcon(NOTIF_MAINTAIN)
+                service.setNotificationActionText(service.getString(R.string.dismiss))
+            }
+            service.updateNotification()
+            service.removeNotificationSound()
+            return
+        }
+
         // when the service was "freshly started", charge until limit
         if (!chargedToLimit && batteryLevel < limitPercentage) {
             if (switchState(CHARGE_FULL)) {
@@ -168,6 +242,11 @@ class BatteryReceiver(private val service: ForegroundService) : BroadcastReceive
                 handler.postDelayed({ Utils.changeState(service, Utils.CHARGE_OFF) }, backOffTime)
             } else {
                 backOffTime = CHARGING_CHANGE_TOLERANCE_MS
+                // Re-assert the charge-off state on every battery update. If the
+                // write that reached the limit was lost, this repairs it instead
+                // of staying in "maintaining" while the device keeps charging.
+                // Utils.changeState() only writes when the file differs.
+                Utils.changeState(service, Utils.CHARGE_OFF)
             }
         } else if (batteryLevel < rechargePercentage) {
             if (switchState(CHARGE_REFRESH)) {
@@ -200,6 +279,8 @@ class BatteryReceiver(private val service: ForegroundService) : BroadcastReceive
         private const val CHARGE_FULL = 0
         private const val CHARGE_STOP = 1
         private const val CHARGE_REFRESH = 2
+        private const val CHARGE_DISCHARGE = 3
+        private const val CHARGE_HEAT = 4
 
         private val handler = Handler(Looper.getMainLooper())
         internal var backOffTime = CHARGING_CHANGE_TOLERANCE_MS

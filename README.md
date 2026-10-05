@@ -21,7 +21,7 @@ If BCL cannot start or stop charging correctly, enable **Always Write CTRL File*
 
 ## Screenshots
 
-<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" height="500dp" /><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" height="500dp" /><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3.png" height="500dp" />
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" height="600dp" alt="Battery Charge Limiter v1.1.9 main screen" />
 
 ## License
 

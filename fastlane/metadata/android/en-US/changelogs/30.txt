@@ -1,0 +1,3 @@
+- Fixed charge limit not being enforced on Samsung devices with MediaTek/Exynos chipsets (Galaxy A7 Lite, A6, A7)
+- The control file batt_slate_mode is no longer auto-selected, since it does not gate charging on these kernels; input_suspend is used instead
+- Added a control file entry for Samsung Galaxy A7 Lite / A6 / A7

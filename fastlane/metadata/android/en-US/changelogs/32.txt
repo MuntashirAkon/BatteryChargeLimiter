@@ -1,0 +1,3 @@
+- Fixed the first charge-state write of each process being dropped on devices where the control file cannot be remounted: the mount failure aborted the whole command chain before the write, so the app switched to "maintaining" while charging continued past the limit
+- The charge-off state is now re-asserted on battery updates, and writes that fail or are ignored by the kernel are logged
+- Fixed the limit not restarting after a normal unplug/replug when power broadcasts are not delivered to an app that is not running: a job with the charging constraint now starts enforcement as soon as charging begins

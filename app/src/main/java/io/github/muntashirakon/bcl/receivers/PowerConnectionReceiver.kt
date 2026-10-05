@@ -52,6 +52,10 @@ class PowerConnectionReceiver : BroadcastReceiver() {
         } else if (action == Intent.ACTION_POWER_DISCONNECTED) {
             Log.d(tag, "ACTION_POWER_DISCONNECTED")
             Utils.stopService(context, false)
+            // Power broadcasts are not delivered to an app that is not running
+            // on several ROMs, so arm the JobScheduler fallback for the next
+            // plug-in before the service goes away.
+            Utils.scheduleChargeStartJob(context)
         }
     }
 }

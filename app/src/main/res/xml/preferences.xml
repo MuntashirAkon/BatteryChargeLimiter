@@ -78,6 +78,23 @@
             android:summary="@string/enforce_charge_limit_desc"
             android:defaultValue="true" />
 
+        <SwitchPreferenceCompat
+            app:iconSpaceReserved="false"
+            android:key="heat_protection"
+            android:title="@string/heat_protection"
+            android:summary="@string/heat_protection_desc"
+            android:defaultValue="false" />
+
+        <SeekBarPreference
+            app:iconSpaceReserved="false"
+            android:key="heat_protection_max_temp"
+            android:title="@string/heat_protection_max_temp"
+            android:defaultValue="40"
+            android:min="30"
+            android:max="50"
+            app:showSeekBarValue="true"
+            android:dependency="heat_protection" />
+
     </PreferenceCategory>
 
     <PreferenceCategory

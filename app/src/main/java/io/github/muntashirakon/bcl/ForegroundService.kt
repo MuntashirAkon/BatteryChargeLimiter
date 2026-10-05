@@ -22,6 +22,7 @@ import io.github.muntashirakon.bcl.Constants.SETTINGS
 import io.github.muntashirakon.bcl.activities.MainActivity
 import io.github.muntashirakon.bcl.receivers.BatteryReceiver
 import io.github.muntashirakon.bcl.receivers.ControlBatteryChargeReceiver
+import io.github.muntashirakon.bcl.receivers.PowerConnectionReceiver
 import io.github.muntashirakon.bcl.settings.PrefsFragment
 
 
@@ -47,6 +48,8 @@ class ForegroundService : Service() {
     private var notifyID = 1
     private var autoResetActive = false
     private var batteryReceiver: BatteryReceiver? = null
+    private val powerConnectionReceiver = PowerConnectionReceiver()
+    private var powerReceiverRegistered = false
 
     /**
      * Enables the automatic reset on service shutdown
@@ -59,6 +62,10 @@ class ForegroundService : Service() {
         isRunning = true
 
         settings.edit().putBoolean(NOTIFICATION_LIVE, true).apply()
+        // Refresh the pre-unlock mirror and make sure the kill-recovery watchdog
+        // is scheduled whenever the service is alive.
+        Utils.syncDirectBootSettings(this)
+        Utils.ensureServiceWatchdog(this)
 
         val channel = NotificationChannelCompat.Builder(
             Constants.FOREGROUND_SERVICE_NOTIFICATION_CHANNEL_ID,
@@ -80,11 +87,29 @@ class ForegroundService : Service() {
 
         batteryReceiver = BatteryReceiver(this@ForegroundService)
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+
+        // From Android 8 onwards, manifest-declared receivers are not delivered to
+        // apps that are in a stopped or cached state. On Android 13 this was observed
+        // dropping both ACTION_POWER_CONNECTED and ACTION_POWER_DISCONNECTED
+        // ("Background execution not allowed"), so the service never started on
+        // plug-in unless the app was already running. Register dynamically as well
+        // for as long as the service is alive, which is not subject to that limit.
+        val powerFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_POWER_CONNECTED)
+            addAction(Intent.ACTION_POWER_DISCONNECTED)
+        }
+        ContextCompat.registerReceiver(
+            this, powerConnectionReceiver, powerFilter, ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        powerReceiverRegistered = true
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         ignoreAutoReset = false
-        return super.onStartCommand(intent, flags, startId)
+        // START_STICKY: if the process is killed in the background (low memory,
+        // aggressive ROM management), the system recreates the service, onCreate
+        // registers the receivers again and BatteryReceiver re-applies the limit.
+        return START_STICKY
     }
 
     fun setNotificationActionText(actionText: String) {
@@ -143,6 +168,11 @@ class ForegroundService : Service() {
         settings.edit().putBoolean(NOTIFICATION_LIVE, false).apply()
         // unregister the battery event receiver
         unregisterReceiver(batteryReceiver)
+
+        if (powerReceiverRegistered) {
+            unregisterReceiver(powerConnectionReceiver)
+            powerReceiverRegistered = false
+        }
 
         // make the BatteryReceiver and dependencies ready for garbage-collection
         batteryReceiver!!.detach(this)

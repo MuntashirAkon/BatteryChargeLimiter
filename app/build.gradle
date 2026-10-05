@@ -3,15 +3,15 @@ apply plugin: 'kotlin-android'
 
 android {
     namespace "io.github.muntashirakon.bcl"
-    compileSdk 34
+    compileSdk 36
     defaultConfig {
         applicationId "io.github.muntashirakon.bcl"
         minSdk 21
-        targetSdk 34
-        versionCode 27
-        versionName "1.1.0"
+        targetSdk 35
+        versionCode 36
+        versionName "1.1.9"
     }
-    lintOptions {
+    lint {
         abortOnError false
     }
     buildTypes {
@@ -46,18 +46,30 @@ android {
             keyPassword 'kJCp!Bda#PBdN2RLK%yMK@hatq&69E'
             keyAlias 'key0'
         }
+        release {
+            // Reuses the repository's dev keystore so the produced APK is installable.
+            // Override via -PstoreFile=... etc. or a real signing config for production use.
+            def overrideStore = project.findProperty('storeFile')
+            storeFile overrideStore ? file(overrideStore) : file('dev_keystore.jks')
+            storePassword project.findProperty('storePassword') ?: 'kJCp!Bda#PBdN2RLK%yMK@hatq&69E'
+            keyPassword project.findProperty('keyPassword') ?: 'kJCp!Bda#PBdN2RLK%yMK@hatq&69E'
+            keyAlias project.findProperty('keyAlias') ?: 'key0'
+        }
     }
+    buildTypes.release.signingConfig signingConfigs.release
     productFlavors {
     }
     buildFeatures {
         buildConfig true
     }
-    kotlinOptions {
-        jvmTarget = '1.8'
+    kotlin {
+        compilerOptions {
+            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 }
 

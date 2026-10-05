@@ -1,0 +1,7 @@
+- Upgraded build to Android Gradle Plugin 8.13.2, Gradle 8.14.3 and Kotlin 2.2.20
+- Target Android 15 (API 35) and compile against Android 16 (API 36)
+- Fixed charge limit not being applied when booting with the charger already connected
+- Fixed theme changes between AMOLED and Dark requiring an app restart
+- Added control file data for OnePlus (Nord n200, 7T Pro) and Google Pixel 6/6 Pro/6a/7/7 Pro
+- Release builds are now signed and installable
+- Replaced the deprecated progress dialog with a themed one

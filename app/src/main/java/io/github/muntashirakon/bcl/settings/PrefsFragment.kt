@@ -2,6 +2,8 @@ package io.github.muntashirakon.bcl.settings
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.fragment.app.DialogFragment
 import androidx.preference.ListPreference
 import androidx.preference.Preference
@@ -51,7 +53,14 @@ class PrefsFragment : PreferenceFragmentCompat() {
 
         theme.setOnPreferenceChangeListener { preference, _ ->
             if (preference is ListPreference) {
-                requireActivity().recreate()
+                // The new value is only persisted after this listener returns, so
+                // recreating straight away re-read the old theme. Defer the
+                // recreation until the preference has been written.
+                Handler(Looper.getMainLooper()).post {
+                    if (!requireActivity().isFinishing) {
+                        requireActivity().recreate()
+                    }
+                }
             }
             true
         }
@@ -107,6 +116,10 @@ class PrefsFragment : PreferenceFragmentCompat() {
         const val KEY_ENFORCE_CHARGE_LIMIT = "enforce_charge_limit"
         const val KEY_ALWAYS_WRITE_CF = "always_write_cf"
         const val KEY_DISABLE_AUTO_RECHARGE = "disable_auto_recharge"
+        const val KEY_SERVICE_DISMISSED = "service_dismissed"
+        const val KEY_BATTERY_OPTIMIZATION_DONT_ASK = "battery_optimization_dont_ask"
+        const val KEY_HEAT_PROTECTION = "heat_protection"
+        const val KEY_HEAT_PROTECTION_MAX_TEMP = "heat_protection_max_temp"
         const val KEY_THEME = "theme"
     }
 }

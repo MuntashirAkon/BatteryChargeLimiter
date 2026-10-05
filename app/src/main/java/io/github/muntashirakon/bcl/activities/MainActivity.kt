@@ -10,6 +10,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -28,6 +29,7 @@ import java.util.*
 class MainActivity : AppCompatActivity() {
     private var preferenceChangeListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
     private lateinit var prefs: SharedPreferences
+    private var batteryOptimizationDialog: AlertDialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         prefs = Utils.getPrefs(this)
@@ -50,6 +52,35 @@ class MainActivity : AppCompatActivity() {
         supportFragmentManager.beginTransaction()
             .replace(R.id.fragment_container, MainFragment())
             .commit()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        askToDisableBatteryOptimizations()
+    }
+
+    /**
+     * Battery optimization lets the system kill the foreground service in the
+     * background, which stops the charge limit from being enforced. Ask the user
+     * to exempt the app whenever it opens, until the app is exempt or the user
+     * chooses not to be asked again.
+     */
+    private fun askToDisableBatteryOptimizations() {
+        if (isFinishing || !Shell.getShell().isRoot) return
+        if (batteryOptimizationDialog?.isShowing == true) return
+        if (prefs.getBoolean(PrefsFragment.KEY_BATTERY_OPTIMIZATION_DONT_ASK, false)) return
+        if (Utils.isIgnoringBatteryOptimizations(this)) return
+        batteryOptimizationDialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.battery_optimization_title)
+            .setMessage(R.string.battery_optimization_message)
+            .setPositiveButton(R.string.battery_optimization_disable) { _, _ ->
+                Utils.requestBatteryOptimizationExemption(this)
+            }
+            .setNeutralButton(R.string.battery_optimization_dont_ask) { _, _ ->
+                prefs.edit().putBoolean(PrefsFragment.KEY_BATTERY_OPTIMIZATION_DONT_ASK, true).apply()
+            }
+            .setNegativeButton(R.string.later, null)
+            .show()
     }
 
     private fun showNoRootDialog() {

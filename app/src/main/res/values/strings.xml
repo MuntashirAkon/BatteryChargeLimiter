@@ -24,6 +24,48 @@
     <string name="open_app">Open App</string>
     <string name="file_data">(CTRL file data will appear here)</string>
 
+    <string name="discharge_to">Discharge to</string>
+    <string name="discharging_to_x">Discharging to %1$d%%</string>
+    <string name="discharging_until_x">Discharging until %1$d%%</string>
+    <string name="cooling_down_at_x">Cooling down (%1$d&#176;C)</string>
+    <string name="heat_protection">Heat protection</string>
+    <string name="heat_protection_desc">Pause charging while the battery is hotter than the maximum temperature</string>
+    <string name="heat_protection_max_temp">Max battery temperature (&#176;C)</string>
+    <string name="percent">%1$d%%</string>
+    <string name="battery_voltage_value" translatable="false">%1$.3f V</string>
+    <string name="temperature_celsius" translatable="false">%1$.1f ℃</string>
+    <string name="temperature_fahrenheit" translatable="false">%1$.1f ℉</string>
+
+    <string name="section_charge_limit">Charge limit</string>
+    <string name="section_discharge">Discharge</string>
+    <string name="section_behaviour">Behaviour</string>
+    <string name="section_advanced">Advanced</string>
+    <string name="label_limit">Limit</string>
+    <string name="label_recharge">Recharge at</string>
+    <string name="label_target">Target</string>
+
+    <string name="monitor_capacity">Maximum capacity</string>
+    <string name="monitor_capacity_value">%1$d mAh (%2$d%%)</string>
+    <string name="monitor_capacity_mah">%1$d mAh</string>
+    <string name="monitor_cycles">Cycle count</string>
+    <string name="monitor_temperature">Battery temperature</string>
+    <string name="monitor_time_to_full">Time to full</string>
+    <string name="monitor_time_minutes">%1$d min</string>
+    <string name="monitor_time_hours_minutes">%1$d h %2$d min</string>
+    <string name="monitor_charger">Charger</string>
+    <string name="monitor_charger_value">%1$.2f V · %2$.2f A max</string>
+    <string name="monitor_charger_volts">%1$.2f V</string>
+    <string name="monitor_power_charging">Charging at %1$.1f W</string>
+    <string name="monitor_power_load">Load %1$.1f W</string>
+    <string name="monitor_health">Health: %1$s</string>
+    <string name="monitor_unknown" translatable="false">—</string>
+
+    <string name="battery_optimization_title">Battery optimization is on</string>
+    <string name="battery_optimization_message">Android can stop the charge limit from being enforced by killing the app in the background. Disable battery optimization for the app to keep the limit working even when the app is not open.</string>
+    <string name="battery_optimization_disable">Disable battery optimization</string>
+    <string name="battery_optimization_dont_ask">Don\'t ask again</string>
+    <string name="later">Later</string>
+
     <string name="previously_started">Previously Started</string>
     <string name="device_not_supported">Your device is not supported (yet)!</string>
     <string name="ok">OK</string>
@@ -81,6 +123,7 @@
     <string name="control_file_alert_desc">WARNING: Tampering with this section without knowledge of what you are changing may cause problems to your device that are unforeseen. Rebooting the device usually fixes a lot of issues, however, some may not be as easily fixed. PROCEED WITH CAUTION!</string>
     <string name="control_understand">I understand</string>
     <string name="control_file_heads_up_title">Control File Information</string>
+    <string name="checking_control_file_data">Checking control file data, please wait…</string>
     <string name="control_file_heads_up_desc">Only control files detected on your device will show up as available. If a control file is detected, but for another device, it should be safe to use. Open an issue or send a pull request on GitHub for your device with the control file data to be added to this list.</string>
 
     <string name="custom_ctrl_file_data_title">Configurable CTRL File Data</string>

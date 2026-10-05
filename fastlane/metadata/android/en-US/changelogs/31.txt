@@ -1,0 +1,2 @@
+- Fixed plug-in and unplug events being dropped on Android 13 and later, which could stop the charge limit from being applied when the app was not already running
+- Power connection events are now also registered while the foreground service is active

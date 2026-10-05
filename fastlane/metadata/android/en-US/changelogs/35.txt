@@ -1,0 +1,3 @@
+- New: heat protection pauses charging while the battery is hotter than a configurable maximum and resumes once it cools down
+- New: "Discharge to" runs the device on battery while the charger stays connected until the level drops to the chosen target, then charging resumes
+- New: battery health line on the main screen showing cycles, full capacity and the kernel's health state

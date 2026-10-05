@@ -75,6 +75,14 @@
     "chargeOff": "1"
   },
   {
+    "file": "/sys/devices/platform/google,charger/charge_stop_level",
+    "label": "charge_stop_level",
+    "details": "Google Pixel 6/6 Pro/6a/7/7 Pro [oriole, raven, bluejay, panther]",
+    "chargeOn": "100",
+    "chargeOff": "1",
+    "experimental": true
+  },
+  {
     "file": "/sys/class/power_supply/battery/charger_control",
     "label": "charger_control",
     "details": "HTC One [m8, m8d]",
@@ -112,6 +120,20 @@
     "chargeOn": "Charging",
     "chargeOff": "Discharging",
     "experimental": true
+  },
+  {
+    "file": "/sys/devices/virtual/oplus_chg/battery/mmi_charging_enable",
+    "label": "mmi_charging_enable",
+    "details": "OnePlus Nord n200 (Android 12)",
+    "chargeOn": "1",
+    "chargeOff": "0"
+  },
+  {
+    "file": "/sys/class/power_supply/battery/mmi_charging_enable",
+    "label": "mmi_charging_enable",
+    "details": "OnePlus 7T Pro (Android 12)",
+    "chargeOn": "1",
+    "chargeOff": "0"
   },
   {
     "file": "/sys/class/power_supply/battery/battery_charging_enabled",
@@ -162,7 +184,8 @@
     "label": "batt_slate_mode",
     "details": "Samsung",
     "chargeOn": "0",
-    "chargeOff": "1"
+    "chargeOff": "1",
+    "issues": true
   },
   {
     "file": "/sys/class/power_supply/battery/charge_enabled",
@@ -206,6 +229,13 @@
     "file": "/sys/class/power_supply/battery/input_suspend",
     "label": "input_suspend",
     "details": "Xiaomi Mi 6 [sagit]",
+    "chargeOn": "0",
+    "chargeOff": "1"
+  },
+  {
+    "file": "/sys/class/power_supply/battery/input_suspend",
+    "label": "input_suspend",
+    "details": "Samsung Galaxy A7 Lite / A6 / A7 (Exynos, MediaTek)",
     "chargeOn": "0",
     "chargeOff": "1"
   },

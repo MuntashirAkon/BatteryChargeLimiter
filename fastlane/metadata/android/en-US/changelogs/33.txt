@@ -1,0 +1,3 @@
+- The foreground service now restarts itself if Android kills it in the background, and a periodic watchdog job re-starts the charge limit within about 15 minutes if the restart does not happen
+- The charge limit is now applied during direct boot: after a reboot the limit works even before the device is unlocked, instead of waiting for the first unlock
+- A temporary dismissal from the notification now lasts until the charger is disconnected, and is re-armed afterwards even if the app was killed
